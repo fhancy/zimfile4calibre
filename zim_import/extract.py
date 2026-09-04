@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from zim_import.gutenberg_catalog import GutenbergBook
-from zim_import.html_convert import ConvertError, convert_html_book
-from zim_import.zim_reader import ZimArchive, ZimError
+from .gutenberg_catalog import GutenbergBook
+from .html_convert import ConvertError, convert_html_book
+from .zim_reader import ZimArchive, ZimError
 
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 

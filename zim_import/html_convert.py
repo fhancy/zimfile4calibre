@@ -13,8 +13,8 @@ from html import unescape
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from zim_import.gutenberg_catalog import GutenbergBook
-from zim_import.zim_reader import ZimArchive, ZimError
+from .gutenberg_catalog import GutenbergBook
+from .zim_reader import ZimArchive, ZimError
 
 ATTR_URL = re.compile(
     r"""(?P<attr>src|href)\s*=\s*(?P<quote>['"])(?P<url>.*?)(?P=quote)""",

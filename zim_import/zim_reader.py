@@ -343,12 +343,27 @@ def _decompress_cluster(raw: bytes) -> bytes:
 def _decompress_zstd(payload: bytes) -> bytes:
     try:
         import zstandard
-    except ImportError as exc:
-        raise ZimError("Cluster uses zstd; install it with: pip install zstandard") from exc
-    import io
+        import io
 
-    reader = zstandard.ZstdDecompressor().stream_reader(io.BytesIO(payload))
-    return reader.read()
+        reader = zstandard.ZstdDecompressor().stream_reader(io.BytesIO(payload))
+        return reader.read()
+    except ImportError:
+        pass
+    try:
+        import pyzstd
+
+        return pyzstd.decompress(payload)
+    except ImportError:
+        pass
+    try:
+        from compression import zstd
+
+        return zstd.decompress(payload)
+    except ImportError as exc:
+        raise ZimError(
+            "Cluster uses zstd; install zstandard or pyzstd "
+            "(Calibre 8 already bundles pyzstd)"
+        ) from exc
 
 
 def _slice_blob(cluster_data: bytes, blob_index: int, extended: bool) -> bytes:

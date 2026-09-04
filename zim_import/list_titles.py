@@ -8,8 +8,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from zim_import.gutenberg_catalog import GutenbergBook, list_gutenberg_books
-from zim_import.zim_reader import ZimArchive, ZimError
+from .gutenberg_catalog import GutenbergBook, list_gutenberg_books
+from .zim_reader import ZimArchive, ZimError
 
 
 def main(argv: Sequence[str] | None = None) -> int:

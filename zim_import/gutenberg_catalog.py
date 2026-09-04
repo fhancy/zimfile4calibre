@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from zim_import.zim_reader import ZimArchive, ZimEntry
+from .zim_reader import ZimArchive, ZimEntry
 
 BOOK_HTML = re.compile(r"^(?P<title>.+)\.(?P<id>\d+)\.html$")
 COVER_HTML = re.compile(r"^(?P<stem>.+)_cover\.(?P<id>\d+)\.html$")

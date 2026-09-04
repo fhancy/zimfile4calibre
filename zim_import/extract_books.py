@@ -7,10 +7,10 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from zim_import.extract import ExtractError, extract_book, preferred_format
-from zim_import.gutenberg_catalog import list_gutenberg_books
-from zim_import.list_titles import _configure_stdio
-from zim_import.zim_reader import ZimArchive, ZimError
+from .extract import ExtractError, extract_book, preferred_format
+from .gutenberg_catalog import list_gutenberg_books
+from .list_titles import _configure_stdio
+from .zim_reader import ZimArchive, ZimError
 
 
 def main(argv: Sequence[str] | None = None) -> int:

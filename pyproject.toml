@@ -1,7 +1,7 @@
 [project]
 name = "zim-import"
 version = "0.1.0"
-description = "Read Gutenberg OpenZIM catalogs and extract EPUB/PDF files"
+description = "Import Gutenberg OpenZIM collections into Calibre"
 requires-python = ">=3.11"
 dependencies = ["zstandard>=0.22"]
 

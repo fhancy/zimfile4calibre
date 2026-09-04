@@ -7,3 +7,5 @@ titles.csv
 *.csv
 !tests/**
 extracted/
+dist/
+tests/_extracted/

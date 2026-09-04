@@ -1,0 +1,10 @@
+ZIM Import
+==========
+
+Import selected books from an OpenZIM Gutenberg collection (not the .zim as one book).
+
+Confirmed source for development: gutenberg_en_all_2021-12.zim
+(OpenZIM v5, namespace A HTML catalog + namespace I EPUB/PDF).
+
+The plugin lists titles from the ZIM directory, then extracts only the
+files you select into Calibre via add_books().

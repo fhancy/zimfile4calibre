@@ -1,7 +1,7 @@
 """Read OpenZIM catalogs (Gutenberg 2021) for a future Calibre plugin."""
 
-from zim_import.gutenberg_catalog import GutenbergBook, list_gutenberg_books
-from zim_import.zim_reader import ZimArchive, ZimEntry, ZimError
+from .gutenberg_catalog import GutenbergBook, list_gutenberg_books
+from .zim_reader import ZimArchive, ZimEntry, ZimError
 
 __all__ = [
     "GutenbergBook",
