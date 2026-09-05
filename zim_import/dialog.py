@@ -5,21 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from qt.core import (
-    QAbstractItemView,
     QAbstractTableModel,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QModelIndex,
     QProgressDialog,
     QPushButton,
     QSortFilterProxyModel,
-    Qt,
     QTableView,
     QThread,
     QVBoxLayout,
@@ -32,6 +30,23 @@ from calibre.utils.localization import _
 
 from .gutenberg_catalog import GutenbergBook, list_gutenberg_books
 from .plugin_import import extract_records, filter_books_for_import
+from .qt_compat import (
+    ActionRole,
+    Cancel,
+    Checked,
+    CheckStateRole,
+    DisplayRole,
+    EditRole,
+    Horizontal,
+    ItemIsEnabled,
+    ItemIsSelectable,
+    ItemIsUserCheckable,
+    NoItemFlags,
+    SelectRows,
+    Stretch,
+    Unchecked,
+    UserRole,
+)
 from .zim_reader import ZimArchive, ZimError
 
 
@@ -57,11 +72,19 @@ class ImportWorker(QThread):
     finished_ok = pyqtSignal(object, object)
     failed = pyqtSignal(str)
 
-    def __init__(self, zim_path: str, books: list[GutenbergBook], dest: str, parent=None):
+    def __init__(
+        self,
+        zim_path: str,
+        books: list[GutenbergBook],
+        dest: str,
+        html_format: str = "epub",
+        parent=None,
+    ):
         QThread.__init__(self, parent)
         self.zim_path = zim_path
         self.books = books
         self.dest = dest
+        self.html_format = html_format
 
     def run(self):
         try:
@@ -70,7 +93,7 @@ class ImportWorker(QThread):
                     archive,
                     self.books,
                     Path(self.dest),
-                    html_format="epub",
+                    html_format=self.html_format,
                     progress=lambda i, n, title: self.progressed.emit(i, n, title),
                 )
             self.finished_ok.emit(records, errors)
@@ -79,7 +102,8 @@ class ImportWorker(QThread):
 
 
 class BookTableModel(QAbstractTableModel):
-    HEADERS = ("", "ID", _("Title"), "EPUB", "PDF")
+    # EPUB/PDF/HTML = formats present in the ZIM (read-only), not output choice.
+    HEADERS = ("", "ID", _("Title"), "EPUB", "PDF", "HTML")
 
     def __init__(self, books: list[GutenbergBook] | None = None, parent=None):
         QAbstractTableModel.__init__(self, parent)
@@ -92,51 +116,70 @@ class BookTableModel(QAbstractTableModel):
         return len(self.books)
 
     def columnCount(self, parent=QModelIndex()):
-        return 5
+        return 6
 
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+    def headerData(self, section, orientation, role=DisplayRole):
+        if orientation == Horizontal and role == DisplayRole:
             return self.HEADERS[section]
         return None
 
     def flags(self, index):
         if not index.isValid():
-            return Qt.NoItemFlags
-        flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+            return NoItemFlags
+        flags = ItemIsEnabled | ItemIsSelectable
         if index.column() == 0:
-            flags |= Qt.ItemIsUserCheckable
+            flags |= ItemIsUserCheckable
         return flags
 
-    def data(self, index, role=Qt.DisplayRole):
+    @staticmethod
+    def _mark(present: bool) -> str:
+        return "✅" if present else ""
+
+    def data(self, index, role=DisplayRole):
         if not index.isValid():
             return None
         book = self.books[index.row()]
         col = index.column()
-        if role == Qt.CheckStateRole and col == 0:
-            return Qt.Checked if id(book) in self.checked else Qt.Unchecked
-        if role == Qt.DisplayRole:
+        if role == CheckStateRole and col == 0:
+            return Checked if id(book) in self.checked else Unchecked
+        if role == DisplayRole:
             if col == 1:
                 return str(book.gutenberg_id)
             if col == 2:
                 return book.title
             if col == 3:
-                return _("yes") if book.has_epub else _("no")
+                return self._mark(book.has_epub)
             if col == 4:
-                return _("yes") if book.has_pdf else _("no")
-        if role == Qt.UserRole:
+                return self._mark(book.has_pdf)
+            if col == 5:
+                # Catalog entries are HTML book pages; HTML is always available.
+                return self._mark(True)
+        if role == UserRole:
             return book
         return None
 
-    def setData(self, index, value, role=Qt.EditRole):
-        if not index.isValid() or index.column() != 0 or role != Qt.CheckStateRole:
+    def setData(self, index, value, role=EditRole):
+        if not index.isValid() or index.column() != 0:
+            return False
+        # Qt may pass ItemDataRole enum or plain int.
+        try:
+            role_ok = int(role) == int(CheckStateRole)
+        except (TypeError, ValueError):
+            role_ok = role == CheckStateRole
+        if not role_ok:
             return False
         book = self.books[index.row()]
         key = id(book)
-        if value == Qt.Checked:
+        # Calibre/Qt6 often sends CheckState as int (2/0); enum == int is False.
+        try:
+            is_checked = int(value) == int(Checked.value)
+        except (TypeError, ValueError, AttributeError):
+            is_checked = value == Checked
+        if is_checked:
             self.checked.add(key)
         else:
             self.checked.discard(key)
-        self.dataChanged.emit(index, index, [Qt.CheckStateRole])
+        self.dataChanged.emit(index, index, [CheckStateRole])
         return True
 
     def reset_books(self, books: list[GutenbergBook]):
@@ -162,7 +205,7 @@ class BookFilterProxy(QSortFilterProxyModel):
     def __init__(self, parent=None):
         QSortFilterProxyModel.__init__(self, parent)
         self.query = ""
-        self.epub_only = True
+        self.epub_only = False
 
     def set_query(self, text: str):
         self.query = text.strip().lower()
@@ -220,26 +263,48 @@ class ZimImportDialog(QDialog):
         self.search.setPlaceholderText(_("Search title or Gutenberg id"))
         self.search.textChanged.connect(self._on_search)
         self.epub_only = QCheckBox(_("EPUB only"))
-        self.epub_only.setChecked(True)
+        # Off by default so HTML-only books (no native EPUB) remain visible.
+        self.epub_only.setChecked(False)
         self.epub_only.toggled.connect(self._on_epub_only)
         filter_row.addWidget(self.search, 1)
         filter_row.addWidget(self.epub_only)
         layout.addLayout(filter_row)
+
+        html_row = QHBoxLayout()
+        html_row.addWidget(QLabel(_("When only HTML is available, convert to:")))
+        self.html_format = QComboBox()
+        self.html_format.addItem(_("EPUB"), "epub")
+        self.html_format.addItem(_("PDF"), "pdf")
+        html_row.addWidget(self.html_format)
+        html_row.addStretch(1)
+        layout.addLayout(html_row)
 
         self.model = BookTableModel([])
         self.proxy = BookFilterProxy(self)
         self.proxy.setSourceModel(self.model)
         self.table = QTableView()
         self.table.setModel(self.proxy)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionBehavior(SelectRows)
         self.table.setSortingEnabled(True)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, Stretch)
         header.resizeSection(0, 28)
         header.resizeSection(1, 70)
-        header.resizeSection(3, 60)
-        header.resizeSection(4, 60)
+        header.resizeSection(3, 48)
+        header.resizeSection(4, 48)
+        header.resizeSection(5, 48)
         layout.addWidget(self.table, 1)
+
+        layout.addWidget(
+            QLabel(
+                _(
+                    "EPUB / PDF = native files in the ZIM. HTML = catalog page "
+                    "(always present; used only when no native EPUB/PDF). "
+                    "Many books have both EPUB and HTML — they are not exclusive. "
+                    "Import prefers native EPUB, then PDF, else HTML→chosen format."
+                )
+            )
+        )
 
         select_row = QHBoxLayout()
         all_btn = QPushButton(_("Select visible"))
@@ -252,11 +317,15 @@ class ZimImportDialog(QDialog):
         select_row.addWidget(self.status, 1)
         layout.addLayout(select_row)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
-        self.import_btn = buttons.addButton(_("Import selected"), QDialogButtonBox.ActionRole)
+        buttons = QDialogButtonBox(Cancel)
+        self.import_btn = buttons.addButton(_("Import selected"), ActionRole)
         self.import_btn.clicked.connect(self._import_selected)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _selected_html_format(self) -> str:
+        data = self.html_format.currentData()
+        return data if data in {"epub", "pdf"} else "epub"
 
     def _browse(self):
         path, _ok = QFileDialog.getOpenFileName(
@@ -295,14 +364,19 @@ class ZimImportDialog(QDialog):
         if self._progress is not None:
             self._progress.close()
             self._progress = None
-        visible = filter_books_for_import(books, epub_only=False, include_pdf=True, include_html=True)
+        visible = filter_books_for_import(
+            books, epub_only=False, include_pdf=True, include_html=True
+        )
         self.model.reset_books(visible)
         self.proxy.set_epub_only(self.epub_only.isChecked())
+        n_epub = sum(1 for book in visible if book.has_epub)
+        n_html_only = sum(
+            1 for book in visible if not book.has_epub and not book.has_pdf
+        )
         self.status.setText(
-            _("{n} books in catalog ({epub} with EPUB).").format(
-                n=len(visible),
-                epub=sum(1 for book in visible if book.has_epub),
-            )
+            _(
+                "{n} books ({epub} with EPUB, {html_only} HTML-only)."
+            ).format(n=len(visible), epub=n_epub, html_only=n_html_only)
         )
 
     def _on_catalog_failed(self, message):
@@ -310,7 +384,13 @@ class ZimImportDialog(QDialog):
             self._progress.close()
             self._progress = None
         self.status.setText(_("Failed to read catalog."))
-        error_dialog(self, _("ZIM Import"), _("Could not read the ZIM catalog."), det_msg=message, show=True)
+        error_dialog(
+            self,
+            _("ZIM Import"),
+            _("Could not read the ZIM catalog."),
+            det_msg=message,
+            show=True,
+        )
 
     def _on_search(self, text):
         self.proxy.set_query(text)
@@ -355,11 +435,19 @@ class ZimImportDialog(QDialog):
             error_dialog(self, _("ZIM Import"), _("Load a ZIM catalog first."), show=True)
             return
         self._temp_dir = PersistentTemporaryDirectory("_zim_import")
-        self._progress = QProgressDialog(_("Extracting books…"), _("Cancel"), 0, len(selected), self)
+        self._progress = QProgressDialog(
+            _("Extracting books…"), _("Cancel"), 0, len(selected), self
+        )
         self._progress.setWindowTitle(_("ZIM Import"))
         self._progress.setMinimumDuration(0)
         self._progress.show()
-        self._import_worker = ImportWorker(self._zim_path, selected, self._temp_dir, self)
+        self._import_worker = ImportWorker(
+            self._zim_path,
+            selected,
+            self._temp_dir,
+            html_format=self._selected_html_format(),
+            parent=self,
+        )
         self._import_worker.progressed.connect(self._on_import_progress)
         self._import_worker.finished_ok.connect(self._on_import_done)
         self._import_worker.failed.connect(self._on_import_failed)
@@ -371,9 +459,11 @@ class ZimImportDialog(QDialog):
             return
         self._progress.setMaximum(total)
         self._progress.setValue(current)
-        self._progress.setLabelText(_("Extracting {current}/{total}: {title}").format(
-            current=current, total=total, title=title
-        ))
+        self._progress.setLabelText(
+            _("Extracting {current}/{total}: {title}").format(
+                current=current, total=total, title=title
+            )
+        )
 
     def _on_import_done(self, records, errors):
         if self._progress is not None:
