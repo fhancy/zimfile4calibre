@@ -15,7 +15,7 @@ from qt.core import (
     QLabel,
     QLineEdit,
     QModelIndex,
-    QProgressDialog,
+    QProgressBar,
     QPushButton,
     QSortFilterProxyModel,
     QTableView,
@@ -236,7 +236,6 @@ class ZimImportDialog(QDialog):
         self._temp_dir = None
         self._catalog_worker = None
         self._import_worker = None
-        self._progress = None
         self.setWindowTitle(_("Import books from ZIM"))
         if icon is not None and not icon.isNull():
             self.setWindowIcon(icon)
@@ -312,10 +311,16 @@ class ZimImportDialog(QDialog):
         all_btn.clicked.connect(self._select_visible)
         none_btn.clicked.connect(self._clear_selection)
         self.status = QLabel(_("Open a .zim catalog to list books."))
+        self.status.setWordWrap(True)
         select_row.addWidget(all_btn)
         select_row.addWidget(none_btn)
         select_row.addWidget(self.status, 1)
         layout.addLayout(select_row)
+
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(True)
+        self.progress.hide()
+        layout.addWidget(self.progress)
 
         buttons = QDialogButtonBox(Cancel)
         self.import_btn = buttons.addButton(_("Import selected"), ActionRole)
@@ -337,6 +342,17 @@ class ZimImportDialog(QDialog):
         if path:
             self.path_edit.setText(path)
 
+    def _set_busy(self, busy: bool, maximum: int = 0) -> None:
+        self.import_btn.setEnabled(not busy)
+        if busy:
+            self.progress.setMaximum(maximum)
+            self.progress.setValue(0)
+            self.progress.show()
+        else:
+            self.progress.hide()
+            self.progress.setMaximum(0)
+            self.progress.setValue(0)
+
     def _load_catalog(self):
         path = self.path_edit.text().strip()
         if not path or not Path(path).is_file():
@@ -344,26 +360,14 @@ class ZimImportDialog(QDialog):
             return
         self._zim_path = path
         self.status.setText(_("Reading catalog (no content extraction)…"))
-        self._progress = QProgressDialog(
-            _("Reading ZIM directory… this can take about 30 seconds."),
-            None,
-            0,
-            0,
-            self,
-        )
-        self._progress.setWindowTitle(_("ZIM Import"))
-        self._progress.setMinimumDuration(0)
-        self._progress.setCancelButton(None)
-        self._progress.show()
+        self._set_busy(True, 0)  # indeterminate
         self._catalog_worker = CatalogWorker(path, self)
         self._catalog_worker.loaded.connect(self._on_catalog)
         self._catalog_worker.failed.connect(self._on_catalog_failed)
         self._catalog_worker.start()
 
     def _on_catalog(self, books):
-        if self._progress is not None:
-            self._progress.close()
-            self._progress = None
+        self._set_busy(False)
         visible = filter_books_for_import(
             books, epub_only=False, include_pdf=True, include_html=True
         )
@@ -379,9 +383,10 @@ class ZimImportDialog(QDialog):
                 self,
                 _("ZIM Import"),
                 _(
-                    "This archive opened successfully, but it does not look like "
-                    "a Gutenberg OpenZIM collection (no A/*.html book pages). "
-                    "DevDocs and similar ZIMs are not importable yet."
+                    "This archive opened successfully, but no Project Gutenberg "
+                    "book pages were found. Supported layouts: legacy A/*.html + I/*.epub "
+                    "or modern C/Title.ID (+ C/*.epub). Other ZIM collections "
+                    "(DevDocs, Wikipedia, …) are not importable."
                 ),
                 show=True,
             )
@@ -393,9 +398,7 @@ class ZimImportDialog(QDialog):
         )
 
     def _on_catalog_failed(self, message):
-        if self._progress is not None:
-            self._progress.close()
-            self._progress = None
+        self._set_busy(False)
         self.status.setText(_("Failed to read catalog."))
         error_dialog(
             self,
@@ -448,12 +451,8 @@ class ZimImportDialog(QDialog):
             error_dialog(self, _("ZIM Import"), _("Load a ZIM catalog first."), show=True)
             return
         self._temp_dir = PersistentTemporaryDirectory("_zim_import")
-        self._progress = QProgressDialog(
-            _("Extracting books…"), _("Cancel"), 0, len(selected), self
-        )
-        self._progress.setWindowTitle(_("ZIM Import"))
-        self._progress.setMinimumDuration(0)
-        self._progress.show()
+        self._set_busy(True, len(selected))
+        self.status.setText(_("Extracting books…"))
         self._import_worker = ImportWorker(
             self._zim_path,
             selected,
@@ -464,27 +463,24 @@ class ZimImportDialog(QDialog):
         self._import_worker.progressed.connect(self._on_import_progress)
         self._import_worker.finished_ok.connect(self._on_import_done)
         self._import_worker.failed.connect(self._on_import_failed)
-        self._progress.canceled.connect(self._import_worker.requestInterruption)
         self._import_worker.start()
 
     def _on_import_progress(self, current, total, title):
-        if self._progress is None:
-            return
-        self._progress.setMaximum(total)
-        self._progress.setValue(current)
-        self._progress.setLabelText(
+        self.progress.setMaximum(total)
+        self.progress.setValue(current)
+        short = title if len(title) <= 60 else title[:57] + "…"
+        self.status.setText(
             _("Extracting {current}/{total}: {title}").format(
-                current=current, total=total, title=title
+                current=current, total=total, title=short
             )
         )
 
     def _on_import_done(self, records, errors):
-        if self._progress is not None:
-            self._progress.close()
-            self._progress = None
+        self._set_busy(False)
         self.result_payload = records
         self.result_errors = errors
         if not records:
+            self.status.setText(_("Nothing could be extracted."))
             error_dialog(
                 self,
                 _("ZIM Import"),
@@ -496,7 +492,6 @@ class ZimImportDialog(QDialog):
         self.accept()
 
     def _on_import_failed(self, message):
-        if self._progress is not None:
-            self._progress.close()
-            self._progress = None
+        self._set_busy(False)
+        self.status.setText(_("Import failed."))
         error_dialog(self, _("ZIM Import"), _("Import failed."), det_msg=message, show=True)

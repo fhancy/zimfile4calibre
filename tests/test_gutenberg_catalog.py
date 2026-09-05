@@ -105,6 +105,32 @@ class GutenbergCatalogTests(unittest.TestCase):
         self.assertTrue(books[0].has_epub)
         self.assertEqual(books[0].html_url, "Gamma.3.html")
 
+    def test_modern_c_namespace_without_html_suffix(self) -> None:
+        books = list(
+            iter_gutenberg_books(
+                [
+                    _entry("C", "text/html", "Polio.66660", "Polio"),
+                    _entry("C", "text/html", "Polio_cover.66660", "Polio"),
+                    _entry(
+                        "C",
+                        "application/epub+zip",
+                        "Polio.66660.epub",
+                        "",
+                        cluster=1,
+                        blob=2,
+                    ),
+                    _entry("C", "text/html", "Home", "Home"),
+                ]
+            )
+        )
+        self.assertEqual(len(books), 1)
+        self.assertEqual(books[0].gutenberg_id, 66660)
+        self.assertEqual(books[0].title, "Polio")
+        self.assertEqual(books[0].html_url, "Polio.66660")
+        self.assertTrue(books[0].has_epub)
+        self.assertEqual(books[0].epub_cluster, 1)
+        self.assertEqual(books[0].epub_blob, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

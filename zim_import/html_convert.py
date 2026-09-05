@@ -79,14 +79,9 @@ def convert_html_book(
         if fmt == "pdf":
             _convert_with_calibre(html_file, dest_path, book.title)
         else:
-            calibre = _ebook_convert()
-            if calibre is not None:
-                try:
-                    _convert_with_calibre(html_file, dest_path, book.title)
-                except ConvertError:
-                    _write_minimal_epub(dest_path, book.title, html, resources)
-            else:
-                _write_minimal_epub(dest_path, book.title, html, resources)
+            # Prefer built-in EPUB zip: much faster than spawning ebook-convert,
+            # and avoids a console window on Windows.
+            _write_minimal_epub(dest_path, book.title, html, resources)
     return dest_path
 
 
@@ -184,13 +179,20 @@ def _convert_with_calibre(html_file: Path, dest: Path, title: str) -> None:
     exe = _ebook_convert()
     if exe is None:
         raise ConvertError("Calibre ebook-convert is not installed")
+    kwargs: dict = {
+        "check": False,
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    # ebook-convert.exe is a Windows console (CUI) binary; without this flag each
+    # call flashes a console and steals keyboard focus from Calibre.
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     result = subprocess.run(
         [str(exe), str(html_file), str(dest), "--title", title],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+        **kwargs,
     )
     if result.returncode != 0 or not dest.is_file():
         detail = (result.stderr or result.stdout or "unknown error").strip()

@@ -306,7 +306,7 @@ class ZimArchive:
         extended = bool(raw[0] & 0x10)
         data = _decompress_cluster(raw)
         decoded = (data, extended)
-        if len(self._cluster_cache) >= 8:
+        if len(self._cluster_cache) >= 32:
             self._cluster_cache.pop(next(iter(self._cluster_cache)))
         self._cluster_cache[cluster_index] = decoded
         return decoded

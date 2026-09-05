@@ -1,4 +1,4 @@
-"""Identify Gutenberg books inside a 2021-era OpenZIM catalog."""
+"""Identify Gutenberg books inside OpenZIM catalogs (legacy A/I and modern C/)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,15 @@ from dataclasses import dataclass
 
 from .zim_reader import ZimArchive, ZimEntry
 
-BOOK_HTML = re.compile(r"^(?P<title>.+)\.(?P<id>\d+)\.html$")
-COVER_HTML = re.compile(r"^(?P<stem>.+)_cover\.(?P<id>\d+)\.html$")
+# Legacy (gutenberg2zim ~2021): A/Title.ID.html, I/Title.ID.epub
+# Modern (gutenberg2zim 3.x / ZIM 6): C/Title.ID, C/Title.ID.epub
+BOOK_HTML = re.compile(r"^(?P<title>.+)\.(?P<id>\d+)(?:\.html)?$")
+COVER_HTML = re.compile(r"^(?P<stem>.+)_cover\.(?P<id>\d+)(?:\.html)?$")
 BOOK_EPUB = re.compile(r"^(?P<title>.+)\.(?P<id>\d+)\.epub$")
 BOOK_PDF = re.compile(r"^(?P<title>.+)\.(?P<id>\d+)\.pdf$")
+
+_CONTENT_NS = frozenset({"A", "C"})
+_EBOOK_NS = frozenset({"I", "C"})
 
 
 @dataclass
@@ -46,7 +51,7 @@ def iter_gutenberg_books(entries: Iterable[ZimEntry]) -> Iterator[GutenbergBook]
     for entry in entries:
         if entry.is_redirect:
             continue
-        if entry.namespace == "A" and entry.mime == "text/html":
+        if entry.namespace in _CONTENT_NS and entry.mime == "text/html":
             cover = COVER_HTML.match(entry.url)
             if cover:
                 cover_stems[int(cover.group("id"))] = cover.group("stem")
@@ -55,12 +60,12 @@ def iter_gutenberg_books(entries: Iterable[ZimEntry]) -> Iterator[GutenbergBook]
             if match:
                 pages[int(match.group("id"))].append(entry)
             continue
-        if entry.namespace == "I" and entry.mime == "application/epub+zip":
+        if entry.namespace in _EBOOK_NS and entry.mime == "application/epub+zip":
             match = BOOK_EPUB.match(entry.url)
             if match:
                 epubs[int(match.group("id"))] = entry
             continue
-        if entry.namespace == "I" and entry.mime == "application/pdf":
+        if entry.namespace in _EBOOK_NS and entry.mime == "application/pdf":
             match = BOOK_PDF.match(entry.url)
             if match:
                 pdfs[int(match.group("id"))] = entry
@@ -89,15 +94,22 @@ def iter_gutenberg_books(entries: Iterable[ZimEntry]) -> Iterator[GutenbergBook]
         )
 
 
+def _book_url_candidates(stem: str, gutenberg_id: int) -> tuple[str, ...]:
+    return (
+        f"{stem}.{gutenberg_id}.html",
+        f"{stem}.{gutenberg_id}",
+    )
+
+
 def _choose_book_page(
     gutenberg_id: int,
     candidates: list[ZimEntry],
     cover_stem: str | None,
 ) -> ZimEntry:
     if cover_stem:
-        expected = f"{cover_stem}.{gutenberg_id}.html"
+        expected = set(_book_url_candidates(cover_stem, gutenberg_id))
         for entry in candidates:
-            if entry.url == expected:
+            if entry.url in expected:
                 return entry
     if len(candidates) == 1:
         return candidates[0]
@@ -106,7 +118,8 @@ def _choose_book_page(
         match = BOOK_HTML.match(entry.url)
         url_title = match.group("title") if match else entry.url
         title_matches_url = int(
-            bool(entry.title) and entry.url == f"{entry.title}.{gutenberg_id}.html"
+            bool(entry.title)
+            and entry.url in _book_url_candidates(entry.title, gutenberg_id)
         )
         return (title_matches_url, len(url_title))
 

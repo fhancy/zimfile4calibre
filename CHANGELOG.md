@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.9
+
+- Hide Windows console flashes from `ebook-convert` (`CREATE_NO_WINDOW`)
+- HTML→EPUB uses built-in zip (faster; no console); PDF still uses Calibre convert
+- Progress bar inside the import dialog (no oversized progress window)
+- Larger ZIM cluster cache (32)
+
+## 0.1.8
+
+- Recognize modern Gutenberg OpenZIM layout (namespace `C/`, URLs `Title.ID` without `.html`)
+- Keep legacy `A/*.html` + `I/*.epub` support
+- Clearer empty-catalog message
+
 ## 0.1.7
 
 - Support OpenZIM major versions 5 and 6
