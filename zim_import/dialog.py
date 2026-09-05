@@ -5,21 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from qt.core import (
-    QAbstractItemView,
     QAbstractTableModel,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QModelIndex,
     QProgressDialog,
     QPushButton,
     QSortFilterProxyModel,
-    Qt,
     QTableView,
     QThread,
     QVBoxLayout,
@@ -32,6 +29,23 @@ from calibre.utils.localization import _
 
 from .gutenberg_catalog import GutenbergBook, list_gutenberg_books
 from .plugin_import import extract_records, filter_books_for_import
+from .qt_compat import (
+    ActionRole,
+    Cancel,
+    Checked,
+    CheckStateRole,
+    DisplayRole,
+    EditRole,
+    Horizontal,
+    ItemIsEnabled,
+    ItemIsSelectable,
+    ItemIsUserCheckable,
+    NoItemFlags,
+    SelectRows,
+    Stretch,
+    Unchecked,
+    UserRole,
+)
 from .zim_reader import ZimArchive, ZimError
 
 
@@ -79,7 +93,8 @@ class ImportWorker(QThread):
 
 
 class BookTableModel(QAbstractTableModel):
-    HEADERS = ("", "ID", _("Title"), "EPUB", "PDF")
+    # EPUB/PDF/HTML = formats present in the ZIM (read-only), not output choice.
+    HEADERS = ("", "ID", _("Title"), "EPUB", "PDF", "HTML")
 
     def __init__(self, books: list[GutenbergBook] | None = None, parent=None):
         QAbstractTableModel.__init__(self, parent)
@@ -92,51 +107,70 @@ class BookTableModel(QAbstractTableModel):
         return len(self.books)
 
     def columnCount(self, parent=QModelIndex()):
-        return 5
+        return 6
 
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+    def headerData(self, section, orientation, role=DisplayRole):
+        if orientation == Horizontal and role == DisplayRole:
             return self.HEADERS[section]
         return None
 
     def flags(self, index):
         if not index.isValid():
-            return Qt.NoItemFlags
-        flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+            return NoItemFlags
+        flags = ItemIsEnabled | ItemIsSelectable
         if index.column() == 0:
-            flags |= Qt.ItemIsUserCheckable
+            flags |= ItemIsUserCheckable
         return flags
 
-    def data(self, index, role=Qt.DisplayRole):
+    @staticmethod
+    def _mark(present: bool) -> str:
+        return "✅" if present else ""
+
+    def data(self, index, role=DisplayRole):
         if not index.isValid():
             return None
         book = self.books[index.row()]
         col = index.column()
-        if role == Qt.CheckStateRole and col == 0:
-            return Qt.Checked if id(book) in self.checked else Qt.Unchecked
-        if role == Qt.DisplayRole:
+        if role == CheckStateRole and col == 0:
+            return Checked if id(book) in self.checked else Unchecked
+        if role == DisplayRole:
             if col == 1:
                 return str(book.gutenberg_id)
             if col == 2:
                 return book.title
             if col == 3:
-                return _("yes") if book.has_epub else _("no")
+                return self._mark(book.has_epub)
             if col == 4:
-                return _("yes") if book.has_pdf else _("no")
-        if role == Qt.UserRole:
+                return self._mark(book.has_pdf)
+            if col == 5:
+                # Catalog entries are HTML book pages; HTML is always available.
+                return self._mark(True)
+        if role == UserRole:
             return book
         return None
 
-    def setData(self, index, value, role=Qt.EditRole):
-        if not index.isValid() or index.column() != 0 or role != Qt.CheckStateRole:
+    def setData(self, index, value, role=EditRole):
+        if not index.isValid() or index.column() != 0:
+            return False
+        # Qt may pass ItemDataRole enum or plain int.
+        try:
+            role_ok = int(role) == int(CheckStateRole)
+        except (TypeError, ValueError):
+            role_ok = role == CheckStateRole
+        if not role_ok:
             return False
         book = self.books[index.row()]
         key = id(book)
-        if value == Qt.Checked:
+        # Calibre/Qt6 often sends CheckState as int (2/0); enum == int is False.
+        try:
+            is_checked = int(value) == int(Checked.value)
+        except (TypeError, ValueError, AttributeError):
+            is_checked = value == Checked
+        if is_checked:
             self.checked.add(key)
         else:
             self.checked.discard(key)
-        self.dataChanged.emit(index, index, [Qt.CheckStateRole])
+        self.dataChanged.emit(index, index, [CheckStateRole])
         return True
 
     def reset_books(self, books: list[GutenbergBook]):
@@ -231,15 +265,25 @@ class ZimImportDialog(QDialog):
         self.proxy.setSourceModel(self.model)
         self.table = QTableView()
         self.table.setModel(self.proxy)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionBehavior(SelectRows)
         self.table.setSortingEnabled(True)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, Stretch)
         header.resizeSection(0, 28)
         header.resizeSection(1, 70)
-        header.resizeSection(3, 60)
-        header.resizeSection(4, 60)
+        header.resizeSection(3, 48)
+        header.resizeSection(4, 48)
+        header.resizeSection(5, 48)
         layout.addWidget(self.table, 1)
+
+        layout.addWidget(
+            QLabel(
+                _(
+                    "EPUB / PDF / HTML mark formats available in the ZIM (not editable). "
+                    "Import prefers native EPUB, then PDF, otherwise HTML→EPUB."
+                )
+            )
+        )
 
         select_row = QHBoxLayout()
         all_btn = QPushButton(_("Select visible"))
@@ -252,8 +296,8 @@ class ZimImportDialog(QDialog):
         select_row.addWidget(self.status, 1)
         layout.addLayout(select_row)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
-        self.import_btn = buttons.addButton(_("Import selected"), QDialogButtonBox.ActionRole)
+        buttons = QDialogButtonBox(Cancel)
+        self.import_btn = buttons.addButton(_("Import selected"), ActionRole)
         self.import_btn.clicked.connect(self._import_selected)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
