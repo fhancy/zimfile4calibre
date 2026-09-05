@@ -9,3 +9,5 @@ titles.csv
 extracted/
 dist/
 tests/_extracted/
+debug-*.log
+*.zim

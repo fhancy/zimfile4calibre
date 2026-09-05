@@ -373,6 +373,19 @@ class ZimImportDialog(QDialog):
         n_html_only = sum(
             1 for book in visible if not book.has_epub and not book.has_pdf
         )
+        if not visible:
+            self.status.setText(_("No Gutenberg books found in this ZIM."))
+            error_dialog(
+                self,
+                _("ZIM Import"),
+                _(
+                    "This archive opened successfully, but it does not look like "
+                    "a Gutenberg OpenZIM collection (no A/*.html book pages). "
+                    "DevDocs and similar ZIMs are not importable yet."
+                ),
+                show=True,
+            )
+            return
         self.status.setText(
             _(
                 "{n} books ({epub} with EPUB, {html_only} HTML-only)."

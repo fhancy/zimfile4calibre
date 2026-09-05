@@ -7,12 +7,12 @@ class ZimImportPlugin(InterfaceActionBase):
 
     name = "ZIM Import"
     description = (
-        "Import selected EPUB/PDF books from a Gutenberg OpenZIM (.zim) collection "
-        "into the Calibre library."
+        "Import selected books from a Project Gutenberg OpenZIM (.zim) collection "
+        "into your Calibre library (EPUB/PDF native, or HTML→EPUB/PDF)."
     )
     supported_platforms = ["windows", "osx", "linux"]
-    author = "calibre-zim-plugin"
-    version = (0, 1, 6)
+    author = "fhancy"
+    version = (0, 1, 7)
     minimum_calibre_version = (6, 0, 0)
 
     actual_plugin = "calibre_plugins.zim_import.zim_import.ui:ZimImportAction"

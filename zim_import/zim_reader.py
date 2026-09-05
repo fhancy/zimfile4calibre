@@ -1,4 +1,4 @@
-"""Read-only OpenZIM v5 directory and cluster blobs."""
+"""Read-only OpenZIM v5/v6 directory and cluster blobs."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import BinaryIO
 
 ZIM_MAGIC = 72173914
 HEADER_SIZE = 80
+SUPPORTED_MAJOR = frozenset({5, 6})
 MIME_REDIRECT = 0xFFFF
 MIME_LINKTARGET = 0xFFFE
 MIME_DELETED = 0xFFFD
@@ -24,7 +25,7 @@ _HEADER_STRUCT = struct.Struct("<IHH16sIIQQQQIIQ")
 
 
 class ZimError(Exception):
-    """Raised when a ZIM file is missing, truncated, or not v5."""
+    """Raised when a ZIM file is missing, truncated, or unsupported."""
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ class ZimEntry:
 
 
 class ZimArchive:
-    """Open a ZIM v5 file, list dirents, and extract selected blobs."""
+    """Open a ZIM v5/v6 file, list dirents, and extract selected blobs."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -165,9 +166,10 @@ class ZimArchive:
         ) = _HEADER_STRUCT.unpack(raw)
         if magic != ZIM_MAGIC:
             raise ZimError(f"Not a ZIM file (magic={magic:#x})")
-        if major != 5:
+        if major not in SUPPORTED_MAJOR:
             raise ZimError(
-                f"Unsupported ZIM version {major}.{minor}; this reader supports v5"
+                f"Unsupported ZIM version {major}.{minor}; "
+                f"this reader supports {', '.join(f'v{v}' for v in sorted(SUPPORTED_MAJOR))}"
             )
         return ZimHeader(
             major=major,

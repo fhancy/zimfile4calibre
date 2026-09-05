@@ -1,46 +1,73 @@
 # ZIM Import for Calibre
 
-Import **selected books** from a Gutenberg OpenZIM archive into Calibre. A `.zim` file is a collection, not a single ebook: the plugin lists titles from the directory, then extracts only the EPUB/PDF files you choose.
+Calibre plugin to import **selected books** from a **Project Gutenberg OpenZIM** (`.zim`) archive into your library.
 
-## Confirmed source
+A `.zim` is a **collection**, not one ebook: the plugin lists titles from the archive directory, then extracts only the books you choose.
 
-Development target: `E:\Downloads\gutenberg_en_all_2021-12.zim`
+**Author:** fhancy  
+**Version:** 0.1.7  
+**Requires:** Calibre 6+  
+**Source:** https://github.com/fhancy/zimfile4calibre
 
-- OpenZIM **v5** (namespaces `A` / `I` / `-`)
-- About **56 000** distinct Gutenberg books (HTML catalog pages, covers excluded)
-- About **49 000** EPUB/PDF/MOBI files in namespace `I`
-- Import is **selective** (dialog), not “add the 64 GB ZIM as one book”
+## What works
 
-## CLI (Python 3.11+)
+| | |
+|---|---|
+| Target content | Gutenberg OpenZIM (HTML catalog in `A/`, ebooks in `I/`) |
+| ZIM versions | OpenZIM **v5** and **v6** |
+| Formats | Native EPUB/PDF; HTML-only books → EPUB or PDF (user choice) |
+| UI | Toolbar action **Import ZIM**: browse, search, multi-select, import |
+| Metadata | Tags `ZIM` / `Gutenberg`, id `gutenberg:<id>`; duplicates skipped |
 
-From this directory:
+Validated against `gutenberg_en_all_2021-12.zim` (~56 000 titles).
 
-```text
-python -m zim_import.list_titles "E:\Downloads\gutenberg_en_all_2021-12.zim" --limit 20
-python -m zim_import.list_titles "E:\Downloads\gutenberg_en_all_2021-12.zim" -o titles.csv
-python -m zim_import.list_formats "E:\Downloads\gutenberg_en_all_2021-12.zim" --limit 20
-python -m zim_import.extract_books "E:\Downloads\gutenberg_en_all_2021-12.zim" -o extracted --limit 5
-```
+## What does not work (yet)
 
-`list_titles` and `list_formats` only read the ZIM catalog (tens of seconds). They do not decompress book content.
+- **DevDocs**, Wikipedia, Stack Exchange, and other non-Gutenberg ZIMs (different layout)
+- Treating the whole `.zim` as a single Calibre book
+- Per-row output format (HTML conversion format is global for the import)
 
-## Calibre plugin
+## Install (users)
 
-Requires Calibre 6+ (tested against Calibre 8.3).
+1. Download `ZIM_Import.zip` from a [release](https://github.com/fhancy/zimfile4calibre/releases) or build it (below).
+2. In Calibre: **Preferences → Plugins → Load plugin from file** → select the ZIP.
+3. Restart Calibre.
+4. Add **Import ZIM** to the toolbar: **Preferences → Toolbars & menus**.
+
+## Use
+
+1. Click **Import ZIM**.
+2. Choose a Gutenberg `.zim` and **Load catalog** (directory scan only; can take ~30 s on large archives).
+3. Search / filter; select books (or **Select visible**).
+4. If needed, set **When only HTML is available, convert to** EPUB or PDF.
+5. **Import selected**.
+
+Columns EPUB / PDF / HTML show **formats present in the ZIM** (not editable). Many Gutenberg books have both EPUB and HTML.
+
+## Build from source
 
 ```text
 python scripts/build_plugin.py
 calibre-customize -a dist/ZIM_Import.zip
 ```
 
-Or, from this folder: `calibre-customize -b .`
+Or: `calibre-customize -b .` from the repo root.
 
-Then add **Import ZIM** to the toolbar: Preferences → Toolbars & menus → Main toolbar.
+## CLI (developers)
 
-Default filter is **EPUB only**. Selected files are extracted to a temp folder and added with `db.add_books()`, tagged `ZIM` / `Gutenberg`, identifier `gutenberg:<id>`. Duplicates are skipped.
+Python 3.11+ with `zstandard` (see `requirements.txt`):
+
+```text
+python -m zim_import.list_titles path\to\file.zim --limit 20
+python -m zim_import.extract_books path\to\file.zim -o extracted --limit 5
+```
 
 ## Tests
 
 ```text
 python -m unittest discover -s tests -v
 ```
+
+## License
+
+See repository license / GitHub project page. Plugin intended for personal and community use with legally obtained OpenZIM archives.
